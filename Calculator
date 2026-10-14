@@ -1,0 +1,592 @@
+// NAME : MY MULTIFUNCTIONAL CALCULATORF
+
+#include <iostream>
+#include <iomanip>
+#include <cmath>
+#include <vector>
+#include <algorithm>
+#include <sqlite3.h>
+#include <unordered_map>
+
+using namespace std;
+
+// Forward declaration of classes
+class BasicOperations;
+class AdvancedOperations;
+class FinancialCalculations;
+class OtherFunctions;
+
+// SQLite Database class for storing results
+class SQLiteDB {
+private:
+    sqlite3* db;
+
+public:
+    SQLiteDB() : db(nullptr) {}
+
+    ~SQLiteDB() {
+        sqlite3_close(db);
+    }
+
+    void openConnection() {
+        int rc = sqlite3_open("calculator.db", &db);
+        if (rc != SQLITE_OK) {
+            cerr << "Error opening SQLite database: " << sqlite3_errmsg(db) << endl;
+            sqlite3_close(db);
+            exit(1);
+        }
+        createTables(); // Create necessary tables if they don't exist
+    }
+
+    void closeConnection() {
+        sqlite3_close(db);
+    }
+
+    void saveResult(const string& tableName, double result) {
+        string sql = "INSERT INTO " + tableName + " (result) VALUES (?);";
+        sqlite3_stmt* stmt;
+        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            cerr << "Error preparing SQL statement: " << sqlite3_errmsg(db) << endl;
+            return;
+        }
+        sqlite3_bind_double(stmt, 1, result);
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            cerr << "Error inserting data: " << sqlite3_errmsg(db) << endl;
+        } else {
+            cout << "Result saved successfully to SQLite." << endl;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+private:
+    void createTables() {
+        string sql = "CREATE TABLE IF NOT EXISTS basic_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, result REAL);";
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+        if (rc != SQLITE_OK) {
+            cerr << "Error creating basic_operations table: " << errMsg << endl;
+            sqlite3_free(errMsg);
+        }
+    }
+};
+
+// Base class for operations
+class Operations {
+protected:
+    SQLiteDB db;
+
+public:
+    Operations() {
+        db.openConnection();
+    }
+
+    virtual ~Operations() {
+        db.closeConnection();
+    }
+
+    virtual void displayMenu() const = 0;
+    virtual void performOperation(int choice) = 0;
+};
+
+// Class for Basic Operations
+class BasicOperations : public Operations {
+public:
+    void displayMenu() const override {
+        cout << "=== Basic Operations ===" << endl;
+        cout << "1. Addition" << endl;
+        cout << "2. Subtraction" << endl;
+        cout << "3. Multiplication" << endl;
+        cout << "4. Division" << endl;
+        cout << "5. Equality (Comparison)" << endl;
+        cout << "Enter your choice (1-5): ";
+    }
+
+    void performOperation(int choice) override {
+        switch (choice) {
+            case 1:
+                performAddition();
+                break;
+            case 2:
+                performSubtraction();
+                break;
+            case 3:
+                performMultiplication();
+                break;
+            case 4:
+                performDivision();
+                break;
+            case 5:
+                performEquality();
+                break;
+            default:
+                cout << "Invalid choice." << endl;
+                break;
+        }
+    }
+
+private:
+    void performAddition() {
+        vector<double> numbers = getNumbers();
+        double sum = 0.0;
+        for (double num : numbers) {
+            sum += num;
+        }
+        cout << "Result: " << sum << endl;
+        db.saveResult("basic_operations", sum); // Save result to SQLite
+    }
+
+    void performSubtraction() {
+        vector<double> numbers = getNumbers();
+        if (numbers.size() < 2) {
+            cout << "Error: Subtraction requires at least two numbers." << endl;
+            return;
+        }
+        double result = numbers[0];
+        for (size_t i = 1; i < numbers.size(); ++i) {
+            result -= numbers[i];
+        }
+        cout << "Result: " << result << endl;
+        db.saveResult("basic_operations", result); // Save result to SQLite
+    }
+
+    void performMultiplication() {
+        vector<double> numbers = getNumbers();
+        if (numbers.empty()) {
+            cout << "Error: Multiplication requires at least one number." << endl;
+            return;
+        }
+        double product = 1.0;
+        for (double num : numbers) {
+            product *= num;
+        }
+        cout << "Result: " << product << endl;
+        db.saveResult("basic_operations", product); // Save result to SQLite
+    }
+
+    void performDivision() {
+        vector<double> numbers = getNumbers();
+        if (numbers.size() < 2) {
+            cout << "Error: Division requires at least two numbers." << endl;
+            return;
+        }
+        double result = numbers[0];
+        for (size_t i = 1; i < numbers.size(); ++i) {
+            if (numbers[i] == 0) {
+                cout << "Error: Division by zero encountered." << endl;
+                return;
+            }
+            result /= numbers[i];
+        }
+        cout << "Result: " << result << endl;
+        db.saveResult("basic_operations", result); // Save result to SQLite
+    }
+
+    void performEquality() {
+        vector<double> numbers = getNumbers();
+        if (numbers.size() < 2) {
+            cout << "Error: Equality comparison requires at least two numbers." << endl;
+            return;
+        }
+        for (size_t i = 1; i < numbers.size(); ++i) {
+            if (numbers[i] != numbers[0]) {
+                cout << "Numbers are not equal." << endl;
+                return;
+            }
+        }
+        cout << "Numbers are equal." << endl;
+    }
+
+    vector<double> getNumbers() {
+        int count;
+        cout << "Enter the number of values: ";
+        cin >> count;
+        vector<double> numbers(count);
+        for (int i = 0; i < count; ++i) {
+            cout << "Enter number " << i + 1 << ": ";
+            cin >> numbers[i];
+        }
+        return numbers;
+    }
+};
+
+// Class for Advanced Operations
+class AdvancedOperations : public Operations {
+public:
+    void displayMenu() const override {
+        cout << "=== Advanced Operations ===" << endl;
+        cout << "1. Exponentiation" << endl;
+        cout << "2. Logarithms" << endl;
+        cout << "3. Trigonometric Functions" << endl;
+        cout << "4. Square Root" << endl;
+        cout << "Enter your choice (1-4): ";
+    }
+
+    void performOperation(int choice) override {
+        switch (choice) {
+            case 1:
+                performExponentiation();
+                break;
+            case 2:
+                performLogarithms();
+                break;
+            case 3:
+                performTrigonometricFunctions();
+                break;
+            case 4:
+                performSquareRoot();
+                break;
+            default:
+                cout << "Invalid choice." << endl;
+                break;
+        }
+    }
+
+private:
+    void performExponentiation() {
+        double base, exponent;
+        cout << "Enter base: ";
+        cin >> base;
+        cout << "Enter exponent: ";
+        cin >> exponent;
+        cout << "Result: " << pow(base, exponent) << endl;
+    }
+
+    void performLogarithms() {
+        double num;
+        cout << "Enter a number: ";
+        cin >> num;
+        cout << "Natural logarithm of " << num << " is: " << log(num) << endl;
+        cout << "Logarithm (base 10) of " << num << " is: " << log10(num) << endl;
+    }
+
+    void performTrigonometricFunctions() {
+        double angle;
+        cout << "Enter angle in radians: ";
+        cin >> angle;
+        cout << "Sin(" << angle << ") = " << sin(angle) << endl;
+        cout << "Cos(" << angle << ") = " << cos(angle) << endl;
+        cout << "Tan(" << angle << ") = " << tan(angle) << endl;
+    }
+
+    void performSquareRoot() {
+        double num;
+        cout << "Enter a number: ";
+        cin >> num;
+        cout << "Square root of " << num << " is: " << sqrt(num) << endl;
+    }
+};
+
+// Class for Financial Calculations
+class FinancialCalculations : public Operations {
+public:
+    void displayMenu() const override {
+        cout << "=== Financial Calculations ===" << endl;
+        cout << "1. Simple Interest" << endl;
+        cout << "2. Compound Interest" << endl;
+        cout << "3. Amortization" << endl;
+        cout << "4. Present Value" << endl;
+        cout << "5. Currency Conversion" << endl;
+        cout << "Enter your choice (1-5): ";
+    }
+
+    void performOperation(int choice) override {
+        switch (choice) {
+            case 1:
+                performSimpleInterest();
+                break;
+            case 2:
+                performCompoundInterest();
+                break;
+            case 3:
+                performAmortization();
+                break;
+            case 4:
+                performPresentValue();
+                break;
+            case 5:
+                performCurrencyConversion();
+                break;
+            default:
+                               cout << "Invalid choice." << endl;
+                break;
+        }
+    }
+
+private:
+    void performSimpleInterest() {
+        double principal, rate, time;
+        cout << "Enter principal amount: ";
+        cin >> principal;
+        cout << "Enter interest rate (in percentage): ";
+        cin >> rate;
+        cout << "Enter time period (in years): ";
+        cin >> time;
+        double interest = (principal * rate * time) / 100;
+        cout << "Simple Interest: " << interest << endl;
+    }
+
+    void performCompoundInterest() {
+        double principal, rate, time;
+        int n;
+        cout << "Enter principal amount: ";
+        cin >> principal;
+        cout << "Enter interest rate (in percentage): ";
+        cin >> rate;
+        cout << "Enter time period (in years): ";
+        cin >> time;
+        cout << "Enter number of times interest applied per time period: ";
+        cin >> n;
+        double amount = principal * pow(1 + (rate / (n * 100)), n * time);
+        double compoundInterest = amount - principal;
+        cout << "Compound Interest: " << compoundInterest << endl;
+    }
+
+    void performAmortization() {
+        double loanAmount, annualRate;
+        int numberOfPayments;
+        cout << "Enter loan amount: ";
+        cin >> loanAmount;
+        cout << "Enter annual interest rate (in percentage): ";
+        cin >> annualRate;
+        cout << "Enter number of payments: ";
+        cin >> numberOfPayments;
+        double monthlyRate = annualRate / 1200;
+        double monthlyPayment = (loanAmount * monthlyRate) /
+                                (1 - pow(1 + monthlyRate, -numberOfPayments));
+        cout << "Monthly Payment: " << monthlyPayment << endl;
+    }
+
+    void performPresentValue() {
+        double futureValue, rate, years;
+        cout << "Enter future value: ";
+        cin >> futureValue;
+        cout << "Enter annual interest rate (in percentage): ";
+        cin >> rate;
+        cout << "Enter number of years: ";
+        cin >> years;
+        double presentValue = futureValue / pow(1 + rate / 100, years);
+        cout << "Present Value: " << presentValue << endl;
+    }
+
+    void performCurrencyConversion() {
+        double amount;
+        cout << "Enter amount in USD: ";
+        cin >> amount;
+
+        // Fixed conversion rates (for example purposes)
+        double conversionRates[3] = {1.12, 0.72, 110.25}; // USD to EUR, USD to GBP, USD to JPY
+        string currencies[3] = {"EUR", "GBP", "JPY"};
+
+        cout << "Choose currency to convert to:" << endl;
+        cout << "1. EUR" << endl;
+        cout << "2. GBP" << endl;
+        cout << "3. JPY" << endl;
+        cout << "Enter your choice (1-3): ";
+        int choice;
+        cin >> choice;
+
+        if (choice < 1 || choice > 3) {
+            cout << "Invalid choice." << endl;
+            return;
+        }
+
+        double convertedAmount = amount * conversionRates[choice - 1];
+
+        cout << fixed << setprecision(2);
+        cout << "Converted amount in " << currencies[choice - 1] << ": " << convertedAmount << endl;
+    }
+};
+
+// Class for Other Functions
+class OtherFunctions : public Operations {
+public:
+    void displayMenu() const override {
+        cout << "=== Other Functions ===" << endl;
+        cout << "1. Absolute Value" << endl;
+        cout << "2. Factorial" << endl;
+        cout << "3. Modulus" << endl;
+        cout << "4. Statistical Functions" << endl;
+        cout << "Enter your choice (1-4): ";
+    }
+
+    void performOperation(int choice) override {
+        switch (choice) {
+            case 1:
+                performAbsoluteValue();
+                break;
+            case 2:
+                performFactorial();
+                break;
+            case 3:
+                performModulus();
+                break;
+            case 4:
+                performStatisticalFunctions();
+                break;
+            default:
+                cout << "Invalid choice." << endl;
+                break;
+        }
+    }
+
+private:
+    void performAbsoluteValue() {
+        double num;
+        cout << "Enter a number: ";
+        cin >> num;
+        cout << "Absolute value of " << num << " is: " << abs(num) << endl;
+    }
+
+    void performFactorial() {
+        int num;
+        cout << "Enter a non-negative integer: ";
+        cin >> num;
+        if (num < 0) {
+            cout << "Error: Factorial is defined for non-negative integers only." << endl;
+            return;
+        }
+        unsigned long long factorial = 1;
+        for (int i = 1; i <= num; ++i) {
+            factorial *= i;
+        }
+        cout << "Factorial of " << num << " is: " << factorial << endl;
+    }
+
+    void performModulus() {
+        int num1, num2;
+        cout << "Enter first integer: ";
+        cin >> num1;
+        cout << "Enter second integer: ";
+        cin >> num2;
+        int result = num1 % num2;
+        cout << "Result of " << num1 << " % " << num2 << " is: " << result << endl;
+    }
+
+    void performStatisticalFunctions() {
+        int count;
+        cout << "Enter the number of values: ";
+        cin >> count;
+        vector<double> numbers(count);
+        for (int i = 0; i < count; ++i) {
+            cout << "Enter number " << i + 1 << ": ";
+            cin >> numbers[i];
+        }
+        
+        // Calculate mean, median, and mode
+        double mean = calculateMean(numbers);
+        double median = calculateMedian(numbers);
+        vector<double> mode = calculateMode(numbers);
+
+        cout << fixed << setprecision(2);
+        cout << "Mean: " << mean << endl;
+        cout << "Median: " << median << endl;
+        cout << "Mode: ";
+        for (double val : mode) {
+            cout << val << " ";
+        }
+        cout << endl;
+    }
+
+    double calculateMean(const vector<double>& numbers) {
+        double sum = 0.0;
+        for (double num : numbers) {
+            sum += num;
+        }
+        return sum / numbers.size();
+    }
+
+    double calculateMedian(vector<double>& numbers) {
+        size_t size = numbers.size();
+        sort(numbers.begin(), numbers.end());
+        if (size % 2 == 0) {
+            return (numbers[size / 2 - 1] + numbers[size / 2]) / 2.0;
+        } else {
+            return numbers[size / 2];
+        }
+    }
+
+    vector<double> calculateMode(const vector<double>& numbers) {
+        vector<double> mode;
+        unordered_map<double, int> freqMap;
+        int maxFreq = 0;
+
+        for (double num : numbers) {
+            freqMap[num]++;
+            if (freqMap[num] > maxFreq) {
+                maxFreq = freqMap[num];
+            }
+        }
+
+        for (const auto& pair : freqMap) {
+            if (pair.second == maxFreq) {
+                mode.push_back(pair.first);
+            }
+        }
+
+        return mode;
+    }
+};
+
+// Main Calculator Application
+class Calculator {
+public:
+    void run() {
+        BasicOperations basicOps;
+        AdvancedOperations advancedOps;
+        FinancialCalculations financialCalc;
+        OtherFunctions otherFuncs;
+
+        int mainChoice;
+        do {
+            displayMainMenu();
+            cin >> mainChoice;
+
+            switch (mainChoice) {
+                case 1:
+                    performOperations(basicOps);
+                    break;
+                case 2:
+                    performOperations(advancedOps);
+                    break;
+                case 3:
+                    performOperations(financialCalc);
+                    break;
+                case 4:
+                    performOperations(otherFuncs);
+                    break;
+                case 5:
+                    cout << "Exiting program. Goodbye!" << endl;
+                    break;
+                default:
+                    cout << "Invalid choice. Please enter again." << endl;
+                    break;
+            }
+        } while (mainChoice != 5);
+    }
+
+private:
+    void displayMainMenu() const {
+        cout << "=== MY MULTIFUNCTIONAL CALCULATOR ===" << endl;
+        cout << "1. Basic Operations" << endl;
+        cout << "2. Advanced Operations" << endl;
+        cout << "3. Financial Calculations" << endl;
+        cout << "4. Other Functions" << endl;
+        cout << "5. Exit" << endl;
+        cout << "Enter your choice (1-5): ";
+    }
+
+    void performOperations(Operations& ops) {
+        int choice;
+        ops.displayMenu();
+        cin >> choice;
+        ops.performOperation(choice);
+    }
+};
+
+int main() {
+    Calculator calc;
+    calc.run();
+    return 0;
+}
